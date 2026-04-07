@@ -1,0 +1,13 @@
+spec_version: 1
+name: electrician_scheduling
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+tasks:
+  - name: easy
+    description: "Schedule an electrician for urgent ticket T005 (panel sparking). Must match skills, availability."
+  - name: medium
+    description: "Reschedule an existing appointment for T001 (wiring) to a better slot."
+  - name: hard
+    description: "Optimally dispatch electricians to 3 urgent tickets (T003, T005, T008), maximizing combined score."
