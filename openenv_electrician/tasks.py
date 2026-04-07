@@ -2,6 +2,18 @@
 
 import math
 
+EPS = 1e-6
+
+
+def _strict01(x: float) -> float:
+    """Clamp to the open interval (0, 1) to satisfy validators requiring strict bounds."""
+    if x <= 0.0:
+        return EPS
+    if x >= 1.0:
+        return 1.0 - EPS
+    return float(x)
+
+
 TASKS = {
     "easy": {
         "name": "easy",
@@ -39,54 +51,51 @@ def grade_easy(state: dict, history: list) -> float:
 
     appointments = state.get("appointments", [])
     t005_appts = [
-        a for a in appointments
-        if a["ticket_id"] == "T005" and a["status"] in ("confirmed", "rescheduled")
+        a
+        for a in appointments
+        if a.get("ticket_id") == "T005" and a.get("status") in ("confirmed", "rescheduled")
     ]
     if not t005_appts:
-        return 0.0
+        return _strict01(0.0)
 
     appt = t005_appts[-1]
-    elec_id = appt["electrician_id"]
+    elec_id = appt.get("electrician_id")
     elec = next((e for e in ELECTRICIANS_DATA if e["id"] == elec_id), None)
 
     if not elec or "panel" not in elec["skills"]:
-        return 0.3  # scheduled but wrong skill
+        return _strict01(0.3)  # scheduled but wrong skill
 
-    if appt["start_time"] not in elec["availability"]:
-        return 0.5  # right skill, but invalid slot
+    if appt.get("start_time") not in elec["availability"]:
+        return _strict01(0.5)  # right skill, but invalid slot
 
-    return 1.0
+    return _strict01(1.0)
 
 
 def grade_medium(state: dict, history: list) -> float:
     """Grade: T001 must have been rescheduled at least once."""
     from openenv_electrician.data import ELECTRICIANS_DATA
 
-    appointments = [a for a in state.get("appointments", []) if a["ticket_id"] == "T001"]
+    appointments = [a for a in state.get("appointments", []) if a.get("ticket_id") == "T001"]
 
-    rescheduled = [
-        a for a in appointments
-        if a.get("rescheduled", False) or a["status"] == "rescheduled"
-    ]
+    rescheduled = [a for a in appointments if a.get("rescheduled", False) or a.get("status") == "rescheduled"]
 
     if not rescheduled:
-        active = [a for a in appointments if a["status"] in ("confirmed", "rescheduled")]
+        active = [a for a in appointments if a.get("status") in ("confirmed", "rescheduled")]
         if not active:
-            return 0.0
-        return 0.4  # confirmed but not rescheduled
+            return _strict01(0.0)
+        return _strict01(0.4)  # confirmed but not rescheduled
 
     final_appt = rescheduled[-1]
-    elec = next(
-        (e for e in ELECTRICIANS_DATA if e["id"] == final_appt["electrician_id"]), None
-    )
+    elec = next((e for e in ELECTRICIANS_DATA if e["id"] == final_appt.get("electrician_id")), None)
 
     score = 0.6  # base for successful reschedule
     if elec and "wiring" in elec["skills"]:
-        score += 0.2  # bonus for right skill
-    if elec and final_appt["start_time"] in elec["availability"]:
-        score += 0.2  # bonus for valid slot
+        score += 0.2
+    if elec and final_appt.get("start_time") in elec["availability"]:
+        score += 0.2
 
-    return min(score, 1.0)
+    score = min(score, 1.0)
+    return _strict01(score)
 
 
 def grade_hard(state: dict, history: list) -> float:
@@ -102,14 +111,15 @@ def grade_hard(state: dict, history: list) -> float:
     total_score = 0.0
     for tid in target_tickets:
         appts = [
-            a for a in appointments
-            if a["ticket_id"] == tid and a["status"] in ("confirmed", "rescheduled")
+            a
+            for a in appointments
+            if a.get("ticket_id") == tid and a.get("status") in ("confirmed", "rescheduled")
         ]
         if not appts:
             continue
 
         appt = appts[-1]
-        elec = next((e for e in ELECTRICIANS_DATA if e["id"] == appt["electrician_id"]), None)
+        elec = next((e for e in ELECTRICIANS_DATA if e["id"] == appt.get("electrician_id")), None)
         ticket = next((t for t in TICKETS_DATA if t["ticket_id"] == tid), None)
         if not elec or not ticket:
             continue
@@ -119,7 +129,7 @@ def grade_hard(state: dict, history: list) -> float:
         rating_score = elec["rating"] / 5.0
         d = dist(elec["home_base"], ticket["location"])
         dist_score = max(0.0, 1.0 - d * 100)
-        slot_valid = 1.0 if appt["start_time"] in elec["availability"] else 0.0
+        slot_valid = 1.0 if appt.get("start_time") in elec["availability"] else 0.0
 
         ticket_score = (
             skill_match * 0.3
@@ -130,7 +140,9 @@ def grade_hard(state: dict, history: list) -> float:
         )
         total_score += ticket_score
 
-    return min(total_score / len(target_tickets), 1.0)
+    avg = total_score / len(target_tickets)
+    avg = min(avg, 1.0)
+    return _strict01(avg)
 
 
 GRADERS = {
