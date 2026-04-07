@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI
+from fastapi import Body, FastAPI
 from pydantic import BaseModel, Field
 
 from openenv_electrician.environment import ElectricianSchedulingEnv
@@ -26,7 +26,6 @@ class StepBody(BaseModel):
 
 app = FastAPI()
 
-
 # Single global environment instance (persists across HTTP calls)
 ENV = ElectricianSchedulingEnv()
 
@@ -37,31 +36,44 @@ def health() -> Dict[str, str]:
 
 
 @app.post("/reset")
-def reset(body: ResetBody) -> Dict[str, Any]:
-    obs = ENV.reset(task_name=body.task_name, seed=body.seed)
-    # Keep HTTP shape compatible with what you already have:
+def reset(body: ResetBody | None = Body(default=None)) -> Dict[str, Any]:
+    # Validator may send POST with no body at all.
+    task_name = body.task_name if body else "easy"
+    seed = body.seed if body else None
+
+    obs = ENV.reset(task_name=task_name, seed=seed)
     return {"observation": obs.model_dump(), "reward": obs.reward, "done": obs.done}
 
 
 @app.post("/step")
-def step(body: StepBody) -> Dict[str, Any]:
-    obs = ENV.step(body.action)
+def step(body: Any = Body(default=None)) -> Dict[str, Any]:
+    # Support both shapes:
+    # 1) {"action": {...}}  (your current API)
+    # 2) {...}             (raw action dict some validators use)
+    action: Any
+    if isinstance(body, dict) and "action" in body and isinstance(body["action"], dict):
+        action = body["action"]
+    else:
+        action = body if body is not None else {"type": "noop"}
+
+    obs = ENV.step(action)
     return {"observation": obs.model_dump(), "reward": obs.reward, "done": obs.done}
 
 
 @app.get("/state")
 def state() -> Dict[str, Any]:
-    # ElectricianSchedulingEnv currently exposes state as a property returning ElectricianState (pydantic model)
     st = ENV.state
     try:
         return st.model_dump()
     except Exception:
-        # fallback
-        return {"episode_id": getattr(st, "episode_id", None), "step_count": getattr(st, "step_count", None)}
+        return {
+            "episode_id": getattr(st, "episode_id", None),
+            "step_count": getattr(st, "step_count", None),
+        }
+
 
 @app.get("/metadata")
 def metadata() -> Dict[str, Any]:
-    # Minimal OpenEnv-style metadata
     return {
         "name": "electrician_scheduling",
         "runtime": "fastapi",
@@ -72,8 +84,6 @@ def metadata() -> Dict[str, Any]:
 
 @app.get("/schema")
 def schema() -> Dict[str, Any]:
-    # Minimal schema endpoint for validators/clients that expect it.
-    # We keep it simple: action is arbitrary JSON dict; observation matches ElectricianObservation.
     return {
         "action": {"type": "object", "description": "Action JSON dict (flat)."},
         "observation": {"type": "ElectricianObservation"},
@@ -82,12 +92,14 @@ def schema() -> Dict[str, Any]:
 
 @app.get("/mcp")
 def mcp() -> Dict[str, Any]:
-    # Stub endpoint (some OpenEnv servers expose it)
     return {"status": "ok", "detail": "mcp not implemented in this environment"}
+
+
 def main() -> None:
     import uvicorn
+
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
