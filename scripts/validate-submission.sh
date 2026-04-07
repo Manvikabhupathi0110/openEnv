@@ -77,7 +77,7 @@ from openenv_electrician.tasks import grade_easy, grade_medium, grade_hard
 state = {'tickets': [], 'electricians': [], 'appointments': []}
 for grader in [grade_easy, grade_medium, grade_hard]:
     score = grader(state, [])
-    assert 0.0 <= score <= 1.0, f'Score out of range: {score}'
+    assert 0.0 < score < 1.0, f'Score out of range: {score}'
 print('Graders OK')
 " 2>/dev/null && check "Graders return [0,1] scores" 0 || check "Graders return [0,1] scores" 1
 
