@@ -170,6 +170,20 @@ export API_BASE_URL=https://router.huggingface.co/v1
 export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
 python3 inference.py
 
+#!/usr/bin/env bash
+set -euo pipefail
+
+SPACE_URL="${SPACE_URL:-https://manvikabhupathi-openenv-electrician-dispatch.hf.space}"
+
+echo "Health:"
+curl -s -o /dev/null -w "%{http_code}\n" "$SPACE_URL/health"
+
+echo "Reset:"
+curl -s -o /dev/null -w "%{http_code}\n" -X POST \
+  -H "Content-Type: application/json" -d '{}' \
+  "$SPACE_URL/reset"
+
+  
 #Example output
 [START] task=easy env=electrician_scheduling model=Qwen/Qwen2.5-72B-Instruct
 [STEP] step=1 action={"type": "propose_appointment", "ticket_id": "T005", "electrician_id": "E001", "start_time": "2024-01-15 09:00"} reward=0.20 done=false error=null
