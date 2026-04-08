@@ -1,29 +1,56 @@
 """
 Inference Script for ElectricianSchedulingEnv
 
-Environment variables:
-  API_BASE_URL:            LLM endpoint (default: https://router.huggingface.co/v1)
-  MODEL_NAME:              Model identifier (default: Qwen/Qwen2.5-72B-Instruct)
-  HF_TOKEN / API_KEY:      API key for the LLM
-  LOCAL_IMAGE_NAME / IMAGE_NAME: Docker image name (optional)
+Mandatory environment variables (must be defined in your environment):
+  API_BASE_URL:  The API endpoint for the LLM (e.g. https://router.huggingface.co/v1)
+  MODEL_NAME:    The model identifier to use for inference (e.g. Qwen/Qwen2.5-72B-Instruct)
+  HF_TOKEN:      Your Hugging Face / API key
+
+Notes:
+- Uses the OpenAI Python client for all LLM calls.
+- Emits structured stdout logs in [START], [STEP], [END] format.
+- Keeps final task score strictly within (0, 1) and prints with high precision
+  to avoid rounding to 0.00 or 1.00 in logs.
 """
 
 import json
 import os
 import re
 import sys
+from typing import Any, Dict, List
+
 from openai import OpenAI
 from openai import APIConnectionError, APIStatusError, RateLimitError
 
 from openenv_electrician.environment import ElectricianSchedulingEnv
 from openenv_electrician.tasks import GRADERS
 
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-MODEL_NAME = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN = os.environ.get("HF_TOKEN") or os.environ.get("API_KEY", "")
-LOCAL_IMAGE_NAME = os.environ.get("LOCAL_IMAGE_NAME") or os.environ.get("IMAGE_NAME", "")
+# ---------------------------------------------------------------------
+# Required env vars
+# ---------------------------------------------------------------------
+API_BASE_URL = os.environ.get("API_BASE_URL")
+MODEL_NAME = os.environ.get("MODEL_NAME")
+HF_TOKEN = os.environ.get("HF_TOKEN")
 
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "dummy")
+if not API_BASE_URL or not MODEL_NAME or not HF_TOKEN:
+    missing = [k for k, v in [("API_BASE_URL", API_BASE_URL), ("MODEL_NAME", MODEL_NAME), ("HF_TOKEN", HF_TOKEN)] if not v]
+    raise RuntimeError(f"Missing required environment variables: {', '.join(missing)}")
+
+client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+
+# ---------------------------------------------------------------------
+# Scoring clamp: ensure strict (0, 1)
+# ---------------------------------------------------------------------
+EPS = 1e-6
+
+
+def strict01(x: float) -> float:
+    if x <= 0.0:
+        return EPS
+    if x >= 1.0:
+        return 1.0 - EPS
+    return float(x)
+
 
 SYSTEM_PROMPT = """You are an electrician dispatch agent. Your job is to schedule electricians for maintenance tickets.
 
@@ -47,14 +74,28 @@ Rules:
 MAX_STEPS = {"easy": 12, "medium": 15, "hard": 20}
 
 
+def _extract_action_json(action_str: str) -> Dict[str, Any]:
+    """
+    Extract a JSON object from the model output. If parsing fails, return noop.
+    """
+    try:
+        json_match = re.search(r"\{.*\}", action_str, re.DOTALL)
+        if not json_match:
+            return {"type": "noop"}
+        return json.loads(json_match.group())
+    except Exception:
+        return {"type": "noop"}
+
+
 def run_task(task_name: str) -> float:
     env = ElectricianSchedulingEnv()
     obs = env.reset(task_name=task_name)
 
+    # Required structured log format
     print(f"[START] task={task_name} env=electrician_scheduling model={MODEL_NAME}")
     sys.stdout.flush()
 
-    messages = [
+    messages: List[Dict[str, str]] = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
@@ -67,7 +108,7 @@ def run_task(task_name: str) -> float:
     ]
 
     step = 0
-    rewards = []
+    rewards: List[float] = []
     max_steps = MAX_STEPS[task_name]
 
     while not obs.done and step < max_steps:
@@ -78,20 +119,17 @@ def run_task(task_name: str) -> float:
                 max_tokens=256,
                 temperature=0.1,
             )
-            action_str = response.choices[0].message.content.strip()
 
-            try:
-                json_match = re.search(r"\{.*\}", action_str, re.DOTALL)
-                action_dict = json.loads(json_match.group()) if json_match else {"type": "noop"}
-            except (json.JSONDecodeError, AttributeError):
-                action_dict = {"type": "noop"}
-                action_str = '{"type": "noop"}'
+            action_str = (response.choices[0].message.content or "").strip()
+            action_dict = _extract_action_json(action_str)
 
             obs = env.step(action_dict)
             step += 1
-            rewards.append(obs.reward or 0.0)
+            rewards.append(float(obs.reward or 0.0))
 
             error_str = obs.last_action_error if obs.last_action_error else "null"
+
+            # Keep the exact [STEP] line shape
             print(
                 f"[STEP] step={step} action={json.dumps(action_dict)} "
                 f"reward={obs.reward:.2f} done={str(obs.done).lower()} error={error_str}"
@@ -114,20 +152,23 @@ def run_task(task_name: str) -> float:
             step += 1
             rewards.append(-0.05)
             error_msg = type(exc).__name__
-            print(
-                f"[STEP] step={step} action=null reward={-0.05:.2f} done=false error={error_msg}"
-            )
+            print(f"[STEP] step={step} action=null reward={-0.05:.2f} done=false error={error_msg}")
             sys.stdout.flush()
             break
 
     grader = GRADERS[task_name]
-    final_score = grader(env._get_state_dict(), [])
+
+    # IMPORTANT:
+    # - clamp strictly into (0, 1)
+    # - print with high precision so it doesn't round to 0.00 or 1.00
+    final_score = strict01(float(grader(env._get_state_dict(), [])))
 
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
     success = final_score >= 0.5
+
     print(
         f"[END] success={str(success).lower()} steps={step} "
-        f"score={final_score:.2f} rewards={rewards_str}"
+        f"score={final_score:.6f} rewards={rewards_str}"
     )
     sys.stdout.flush()
 
@@ -135,7 +176,9 @@ def run_task(task_name: str) -> float:
 
 
 if __name__ == "__main__":
-    scores = {}
+    scores: Dict[str, float] = {}
     for task in ["easy", "medium", "hard"]:
         scores[task] = run_task(task)
+
+    # stderr summary (not part of structured stdout)
     print(f"Final scores: {scores}", file=sys.stderr)
