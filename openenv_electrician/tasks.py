@@ -2,6 +2,7 @@
 
 import math
 
+# Epsilon used to keep all scores strictly inside (0, 1)
 EPS = 1e-6
 
 
@@ -77,7 +78,9 @@ def grade_medium(state: dict, history: list) -> float:
 
     appointments = [a for a in state.get("appointments", []) if a.get("ticket_id") == "T001"]
 
-    rescheduled = [a for a in appointments if a.get("rescheduled", False) or a.get("status") == "rescheduled"]
+    rescheduled = [
+        a for a in appointments if a.get("rescheduled", False) or a.get("status") == "rescheduled"
+    ]
 
     if not rescheduled:
         active = [a for a in appointments if a.get("status") in ("confirmed", "rescheduled")]
@@ -86,7 +89,9 @@ def grade_medium(state: dict, history: list) -> float:
         return _strict01(0.4)  # confirmed but not rescheduled
 
     final_appt = rescheduled[-1]
-    elec = next((e for e in ELECTRICIANS_DATA if e["id"] == final_appt.get("electrician_id")), None)
+    elec = next(
+        (e for e in ELECTRICIANS_DATA if e["id"] == final_appt.get("electrician_id")), None
+    )
 
     score = 0.6  # base for successful reschedule
     if elec and "wiring" in elec["skills"]:
