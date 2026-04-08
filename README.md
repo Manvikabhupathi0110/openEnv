@@ -186,23 +186,13 @@ curl -s -o /dev/null -w "%{http_code}\n" -X POST \
   
 #Example output
 [START] task=easy env=electrician_scheduling model=Qwen/Qwen2.5-72B-Instruct
-[STEP] step=1 action={"type": "propose_appointment", "ticket_id": "T005", "electrician_id": "E001", "start_time": "2024-01-15 09:00"} reward=0.20 done=false error=null
-[STEP] step=2 action={"type": "confirm_appointment", "appointment_id": "PA001"} reward=0.45 done=false error=null
-[STEP] step=3 action={"type": "finalize"} reward=0.95 done=true error=null
-[END] success=true steps=3 score=1.00 rewards=0.20,0.45,0.95
+[STEP] step=1 action=null reward=-0.05 done=false error=APIStatusError
+[END] success=false steps=1 score=0.000001 rewards=-0.05
 [START] task=medium env=electrician_scheduling model=Qwen/Qwen2.5-72B-Instruct
-[STEP] step=1 action={"type": "reschedule_appointment", "appointment_id": "A001", "new_start_time": "2024-01-15 13:00", "new_electrician_id": "E001"} reward=0.25 done=false error=null
-[STEP] step=2 action={"type": "finalize"} reward=0.95 done=true error=null
-[END] success=true steps=2 score=1.00 rewards=0.25,0.95
+[STEP] step=1 action=null reward=-0.05 done=false error=APIStatusError
+[END] success=false steps=1 score=0.400000 rewards=-0.05
 [START] task=hard env=electrician_scheduling model=Qwen/Qwen2.5-72B-Instruct
-[STEP] step=1 action={"type": "list_electricians"} reward=-0.04 done=false error=null
-[STEP] step=2 action={"type": "propose_appointment", "ticket_id": "T005", "electrician_id": "E001", "start_time": "2024-01-15 09:00"} reward=0.20 done=false error=null
-[STEP] step=3 action={"type": "confirm_appointment", "appointment_id": "PA001"} reward=0.45 done=false error=null
-[STEP] step=4 action={"type": "propose_appointment", "ticket_id": "T008", "electrician_id": "E003", "start_time": "2024-01-15 13:00"} reward=0.20 done=false error=null
-[STEP] step=5 action={"type": "confirm_appointment", "appointment_id": "PA002"} reward=0.45 done=false error=null
-[STEP] step=6 action={"type": "propose_appointment", "ticket_id": "T003", "electrician_id": "E005", "start_time": "2024-01-15 17:00"} reward=0.20 done=false error=null
-[STEP] step=7 action={"type": "confirm_appointment", "appointment_id": "PA003"} reward=0.45 done=false error=null
-[STEP] step=8 action={"type": "finalize"} reward=0.83 done=true error=null
-[END] success=true steps=8 score=0.88 rewards=-0.04,0.20,0.45,0.20,0.45,0.20,0.45,0.83
-Final scores: {'easy': 1.0, 'medium': 1.0, 'hard': 0.88470571029716}
+[STEP] step=1 action=null reward=-0.05 done=false error=APIStatusError
+[END] success=false steps=1 score=0.000001 rewards=-0.05
+Final scores: {'easy': 1e-06, 'medium': 0.4, 'hard': 1e-06}
 (.venv)
